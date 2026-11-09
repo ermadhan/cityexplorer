@@ -4,10 +4,11 @@ import CitySearch from '../components/CitySearch';
 import CategoryCard from '../components/CategoryCard';
 import { exploreCity } from '../api/cityExplorer';
 import CompareCitiesPage from './CompareCitiesPage';
+import LeaderboardPage from './LeaderboardPage';
 import type { CitySearchResult, CitySnapshot, ExploreStatus } from '../types';
 
 export default function HomePage() {
-  const [screen, setScreen] = useState<'explore' | 'compare'>('explore');
+  const [screen, setScreen] = useState<'explore' | 'compare' | 'leaderboard'>('explore');
   const [selected, setSelected] = useState<CitySearchResult | null>(null);
   const [result, setResult] = useState<CitySnapshot | null>(null);
   const [status, setStatus] = useState<ExploreStatus>('idle');
@@ -56,11 +57,19 @@ export default function HomePage() {
             >
               Compare cities
             </button>
+            <button
+              type="button"
+              onClick={() => setScreen('leaderboard')}
+              aria-current={screen === 'leaderboard' ? 'page' : undefined}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${screen === 'leaderboard' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              Leaderboard
+            </button>
           </nav>
         </div>
       </header>
 
-      {screen === 'compare' ? <CompareCitiesPage /> : (
+      {screen === 'leaderboard' ? <LeaderboardPage /> : screen === 'compare' ? <CompareCitiesPage /> : (
       <>
       {/* ── Hero Search ── */}
       <section className="max-w-5xl mx-auto px-6 pt-16 pb-10 text-center flex flex-col items-center gap-6">

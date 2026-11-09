@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertCircle, GitCompareArrows, Loader2, X } from 'lucide-react';
 import { compareLatestSnapshots } from '../api/cityExplorer';
 import SavedCitySearch from '../components/SavedCitySearch';
+import CityRatings from '../components/CityRatings';
 import type { CategoryCount, SavedCity, CitySnapshot, ExploreResult } from '../types';
 
 const categories: {
@@ -156,7 +157,7 @@ export default function CompareCitiesPage() {
               : <span className="flex items-center gap-2"><GitCompareArrows size={18} /> Compare {cities.length > 0 ? `(${cities.length})` : ''}</span>}
           </button>
         </div>
-        <p className="mt-2 text-sm text-slate-400">Choose 2–4 cities. Counts are shown as returned; no population adjustment is applied.</p>
+        <p className="mt-2 text-sm text-slate-400">Choose 2–4 cities. Feature tables show raw bounding-box counts.</p>
 
         {cities.length > 0 && (
           <ul className="mt-4 flex flex-wrap gap-2">
@@ -187,6 +188,7 @@ export default function CompareCitiesPage() {
 
       {snapshots && (
         <section className="flex flex-col gap-5">
+          <CityRatings snapshots={snapshots} />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {snapshots.map((snapshot) => (
               <article key={snapshot.snapshot_id} className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">

@@ -18,6 +18,7 @@ from queries.water import count_water
 from queries.infrastructure import count_infrastructure
 from queries.land_use import count_land_use
 from queries.places import count_places
+from ratings import calculate_leaderboard, calculate_ratings
 from snapshot_store import (
     SNAPSHOT_SCHEMA_VERSION,
     get_city_snapshots,
@@ -90,6 +91,27 @@ class SavedCity(BaseModel):
     country: Optional[str]
     subtype: str
     captured_at: str
+
+
+class CityRating(BaseModel):
+    division_id: str
+    overture_release: str
+    population: int | None
+    area_sq_km: float | None
+    poi_count: int | None
+    per_10000_people: float | None
+    per_sq_km: float | None
+    score: float | None
+
+
+class LeaderboardEntry(CityRating):
+    city_name: str
+    country: str | None
+    subtype: str
+    snapshot_id: int
+    captured_at: str
+    population_score: float | None
+    area_score: float | None
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +227,29 @@ def api_compare_snapshots(
             ),
         )
     return snapshots
+
+
+@app.get("/api/ratings/compare", response_model=list[CityRating])
+def api_compare_ratings(
+    snapshot_id: list[int] = Query(..., min_length=2, max_length=4),
+):
+    snapshots = [get_snapshot(value) for value in snapshot_id]
+    if any(snapshot is None for snapshot in snapshots):
+        raise HTTPException(status_code=404, detail="A selected snapshot was not found.")
+    if len({snapshot["city"]["division_id"] for snapshot in snapshots}) != len(snapshots):
+        raise HTTPException(status_code=400, detail="City selections must be unique.")
+    return calculate_ratings(snapshots)
+
+
+@app.get("/api/ratings/leaderboard", response_model=list[LeaderboardEntry])
+def api_leaderboard():
+    snapshots = []
+    for city in list_saved_cities():
+        snapshot = get_latest_snapshot(city["division_id"])
+        if snapshot is None:
+            raise HTTPException(status_code=409, detail="A saved city snapshot is no longer available. Please retry.")
+        snapshots.append(snapshot)
+    return calculate_leaderboard(snapshots)
 
 
 @app.get("/api/snapshots/latest/{division_id}", response_model=CitySnapshot)

@@ -60,6 +60,15 @@ def initialize_snapshot_db() -> None:
                 count INTEGER NOT NULL CHECK (count >= 0),
                 PRIMARY KEY (snapshot_id, category, label)
             );
+
+            CREATE TABLE IF NOT EXISTS rating_inputs (
+                division_id TEXT NOT NULL,
+                overture_release TEXT NOT NULL,
+                population INTEGER,
+                area_sq_km REAL,
+                poi_count INTEGER,
+                PRIMARY KEY (division_id, overture_release)
+            );
             """
         )
 
@@ -201,3 +210,37 @@ def list_saved_cities() -> list[dict[str, Any]]:
 
 def get_latest_snapshots(division_ids: list[str]) -> list[dict[str, Any] | None]:
     return [get_latest_snapshot(division_id) for division_id in division_ids]
+
+
+def get_rating_inputs(division_id: str, release: str) -> dict[str, Any] | None:
+    with _connect() as connection:
+        row = connection.execute(
+            """SELECT population, area_sq_km, poi_count FROM rating_inputs
+               WHERE division_id = ? AND overture_release = ?""",
+            (division_id, release),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+
+def save_rating_inputs(division_id: str, release: str, inputs: dict[str, Any]) -> None:
+    with _connect() as connection:
+        connection.execute(
+            """INSERT INTO rating_inputs
+               (division_id, overture_release, population, area_sq_km, poi_count)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(division_id, overture_release) DO NOTHING""",
+            (division_id, release, inputs["population"], inputs["area_sq_km"], inputs["poi_count"]),
+        )
+
+
+def list_missing_rating_inputs() -> list[tuple[str, str]]:
+    with _connect() as connection:
+        rows = connection.execute(
+            """SELECT DISTINCT s.division_id, s.overture_release
+               FROM snapshots s
+               LEFT JOIN rating_inputs r
+                 ON r.division_id = s.division_id AND r.overture_release = s.overture_release
+               WHERE r.division_id IS NULL
+               ORDER BY s.overture_release, s.division_id"""
+        ).fetchall()
+        return [(row["division_id"], row["overture_release"]) for row in rows]

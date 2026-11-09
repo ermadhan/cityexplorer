@@ -47,4 +47,25 @@ export interface SavedCity {
   captured_at: string;
 }
 
+export interface CityRating {
+  division_id: string;
+  overture_release: string;
+  population: number | null;
+  area_sq_km: number | null;
+  poi_count: number | null;
+  per_10000_people: number | null;
+  per_sq_km: number | null;
+  score: number | null;
+}
+
+export interface LeaderboardEntry extends CityRating {
+  city_name: string;
+  country: string | null;
+  subtype: string;
+  snapshot_id: number;
+  captured_at: string;
+  population_score: number | null;
+  area_score: number | null;
+}
+
 export type ExploreStatus = 'idle' | 'loading' | 'success' | 'error';

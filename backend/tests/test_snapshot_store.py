@@ -98,6 +98,16 @@ class SnapshotStoreTests(unittest.TestCase):
             "captured_at": "2026-11-10T12:00:00+00:00",
         })
 
+    def test_historical_rating_backfill_does_not_modify_snapshots(self):
+        result = sample_result()
+        snapshot_id = snapshot_store.save_snapshot(result, "2026-10-21.0")
+        self.assertEqual(snapshot_store.list_missing_rating_inputs(), [("division-1", "2026-10-21.0")])
+        inputs = {"population": None, "area_sq_km": 20.5, "poi_count": 42}
+        snapshot_store.save_rating_inputs("division-1", "2026-10-21.0", inputs)
+        self.assertEqual(snapshot_store.get_rating_inputs("division-1", "2026-10-21.0"), inputs)
+        self.assertEqual(snapshot_store.list_missing_rating_inputs(), [])
+        self.assertEqual(snapshot_store.get_snapshot(snapshot_id)["places"], result["places"])
+
 
 if __name__ == "__main__":
     unittest.main()

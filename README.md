@@ -12,6 +12,7 @@ Pick any city → get a full count breakdown of:
 - 🌳 Land Use (parks, education, military, industrial zones…)
 - 📍 Places & POIs (food, health, education, retail…)
 - Compare the latest saved feature counts for 2–4 cities.
+- Rank all saved cities by combined, per-population, and per-area POI scores.
 
 All data is queried live from Overture Maps parquet files on AWS S3 — no data download needed.
 Successful explorations are also saved as timestamped snapshots in a local
@@ -59,6 +60,27 @@ or choose 2–4 cities from the local SQLite database, and compare the latest sa
 transportation, water, infrastructure, land use, and places. Counts are shown
 as returned; they are not adjusted for city size or population.
 
+The Places & POIs rating recounts places inside the Overture division polygon
+from each snapshot's recorded release. It averages two equally weighted scores:
+places per 10,000 people and places per km², each scaled to the highest eligible
+city in the current comparison. At least two cities need valid population and
+polygon areas; scores are relative to the selected cities, not quality-of-life
+ratings. Overture population can be missing or lack a reference year. The
+polygon-based POI count differs from the bounding-box feature tables.
+
+The **Leaderboard** uses the latest snapshot of every saved city. It shows
+separate combined, per-population, and per-area rankings. Each individual
+score is relative to all saved cities with that metric; the combined score uses
+only cities with both metrics. At least two eligible cities are needed for a
+ranking, and cities missing one metric remain eligible for the other. Scores
+and ranks can change when saved cities are added or updated.
+
+Rating inputs are cached separately from existing snapshots. They are fetched
+when a comparison is first rated; to backfill all historical snapshots, run
+`python backfill_rating_inputs.py` from `backend`. The command reports errors
+if a recorded release cannot be accessed, and can be rerun. Missing population
+is reported as unavailable; it is not replaced with current data.
+
 The backend stores successful snapshots in `backend/city_snapshots.sqlite3`.
 This local database is ignored by Git. Snapshot APIs:
 
@@ -68,6 +90,9 @@ This local database is ignored by Git. Snapshot APIs:
 - `GET /api/cities/{division_id}/snapshots` — city snapshot history
 - `GET /api/snapshots/compare?division_id=...&division_id=...` — latest
   snapshots for 2–4 cities
+- `GET /api/ratings/compare?snapshot_id=...&snapshot_id=...` — relative POI
+  ratings for 2–4 exact snapshots
+- `GET /api/ratings/leaderboard` — scores for the latest snapshot of each saved city
 
 ---
 

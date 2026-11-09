@@ -1,6 +1,14 @@
-import type { CitySearchResult, CitySnapshot, SavedCity } from '../types';
+import type { CityRating, CitySearchResult, CitySnapshot, LeaderboardEntry, SavedCity } from '../types';
 
 const BASE = '/api';
+
+export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+  const res = await fetch(`${BASE}/ratings/leaderboard`);
+  if (!res.ok) {
+    throw new Error(`Could not load the leaderboard (${res.status}). An Overture release may be unavailable.`);
+  }
+  return res.json();
+}
 
 /** List cities with a saved snapshot, using the latest metadata for each. */
 export async function listSavedCities(): Promise<SavedCity[]> {
@@ -54,6 +62,15 @@ export async function compareLatestSnapshots(
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail ?? `Comparison failed (${res.status})`);
   }
+  return res.json();
+}
+
+/** Rate the exact snapshots shown in a comparison. */
+export async function compareRatings(snapshotIds: number[]): Promise<CityRating[]> {
+  const params = new URLSearchParams();
+  snapshotIds.forEach((id) => params.append('snapshot_id', String(id)));
+  const res = await fetch(`${BASE}/ratings/compare?${params}`);
+  if (!res.ok) throw new Error(`Could not calculate ratings (${res.status}). The recorded Overture release may be unavailable.`);
   return res.json();
 }
 
