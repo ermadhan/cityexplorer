@@ -6,9 +6,10 @@ import type { CitySearchResult } from '../types';
 interface Props {
   onSelect: (city: CitySearchResult) => void;
   disabled?: boolean;
+  clearOnSelect?: boolean;
 }
 
-export default function CitySearch({ onSelect, disabled }: Props) {
+export default function CitySearch({ onSelect, disabled, clearOnSelect = false }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CitySearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -53,8 +54,8 @@ export default function CitySearch({ onSelect, disabled }: Props) {
 
   function handleSelect(city: CitySearchResult) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    skipSearchRef.current = query !== city.city_name;
-    setQuery(city.city_name);
+    skipSearchRef.current = !clearOnSelect && query !== city.city_name;
+    setQuery(clearOnSelect ? '' : city.city_name);
     setResults([]);
     setOpen(false);
     setSearchError(false);

@@ -3,11 +3,13 @@ import { Compass, Loader2, AlertCircle } from 'lucide-react';
 import CitySearch from '../components/CitySearch';
 import CategoryCard from '../components/CategoryCard';
 import { exploreCity } from '../api/cityExplorer';
-import type { CitySearchResult, ExploreResult, ExploreStatus } from '../types';
+import CompareCitiesPage from './CompareCitiesPage';
+import type { CitySearchResult, CitySnapshot, ExploreStatus } from '../types';
 
 export default function HomePage() {
+  const [screen, setScreen] = useState<'explore' | 'compare'>('explore');
   const [selected, setSelected] = useState<CitySearchResult | null>(null);
-  const [result, setResult] = useState<ExploreResult | null>(null);
+  const [result, setResult] = useState<CitySnapshot | null>(null);
   const [status, setStatus] = useState<ExploreStatus>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -37,10 +39,29 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-3">
           <Compass className="text-indigo-500" size={28} />
           <h1 className="text-xl font-bold text-slate-800 tracking-tight">City Explorer</h1>
-          <span className="ml-auto text-xs text-slate-400">Powered by Overture Maps</span>
+          <nav className="ml-auto flex items-center gap-2" aria-label="Main navigation">
+            <button
+              type="button"
+              onClick={() => setScreen('explore')}
+              aria-current={screen === 'explore' ? 'page' : undefined}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${screen === 'explore' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              Explore
+            </button>
+            <button
+              type="button"
+              onClick={() => setScreen('compare')}
+              aria-current={screen === 'compare' ? 'page' : undefined}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${screen === 'compare' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              Compare cities
+            </button>
+          </nav>
         </div>
       </header>
 
+      {screen === 'compare' ? <CompareCitiesPage /> : (
+      <>
       {/* ── Hero Search ── */}
       <section className="max-w-5xl mx-auto px-6 pt-16 pb-10 text-center flex flex-col items-center gap-6">
         <h2 className="text-4xl font-extrabold text-slate-800 leading-tight">
@@ -96,6 +117,9 @@ export default function HomePage() {
                 {result.city.country} · {result.city.subtype} ·
                 bbox {result.city.bbox.xmin.toFixed(3)}° → {result.city.bbox.xmax.toFixed(3)}°
               </p>
+              <p className="mt-1 text-sm text-indigo-100">
+                Snapshot #{result.snapshot_id} saved · Overture release {result.overture_release}
+              </p>
             </div>
           </div>
 
@@ -108,6 +132,8 @@ export default function HomePage() {
             <CategoryCard emoji="📍" title="Places & POIs"   data={result.places}           colorOffset={1} />
           </div>
         </section>
+      )}
+      </>
       )}
     </div>
   );
