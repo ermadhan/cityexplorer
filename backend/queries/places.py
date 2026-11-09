@@ -21,7 +21,7 @@ def count_places(bbox: dict) -> list[dict]:
         SELECT
             COALESCE(
                 taxonomy.hierarchy[1],   -- first (broadest) hierarchy level
-                categories.primary,      -- fallback for older schema
+                taxonomy.primary,        -- fallback when no hierarchy is assigned
                 'unknown'
             )                            AS label,
             COUNT(*)                     AS count
