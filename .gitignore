@@ -3,3 +3,5 @@ __pycache__/
 /backend/city_snapshots.sqlite3
 /backend/city_snapshots.sqlite3-shm
 /backend/city_snapshots.sqlite3-wal
+/backend/import_logs/
+*.csv

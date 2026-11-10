@@ -81,6 +81,38 @@ when a comparison is first rated; to backfill all historical snapshots, run
 if a recorded release cannot be accessed, and can be rerun. Missing population
 is reported as unavailable; it is not replaced with current data.
 
+### Batch import cities
+
+The standalone importer populates the same SQLite database used by the app.
+Create a UTF-8 CSV with `city` and `country` headers and optional `reload`:
+
+```csv
+city,country,reload
+Chennai,India,false
+Coimbatore,IN,true
+```
+
+From `backend`, run `python import_cities.py path\to\cities.csv`. Country values
+may be two-letter codes or exact country names published by Overture. City names
+must exactly match an Overture primary name, ignoring case. Multiple matching
+divisions are logged as ambiguous rather than guessed. No boundary or unknown
+country is also logged. Names or aliases absent from Overture cannot be resolved.
+
+Each successful new import runs all six exploration queries, loads polygon-based
+POI rating inputs, and saves a timestamped snapshot. Existing cities are skipped
+by default, while missing rating inputs are filled using their snapshot's
+recorded release. Set `reload` to `true`, `yes`, or `1` for a new snapshot;
+`false`, `no`, `0`, or empty skips an existing snapshot. Missing population
+remains unavailable.
+
+Each run creates a timestamped failure CSV under `backend/import_logs` (or
+`--log-dir`), including rows that cannot be found, are ambiguous, are invalid,
+or fail processing. Processing continues after row failures. Exit status is
+`0` for success, `1` if any row failed, and `2` for invalid input or setup
+errors. An unrecoverable CSV syntax error is logged and ends the run because
+the remaining rows cannot be parsed reliably. The first run may take
+considerable time because it queries Overture.
+
 The backend stores successful snapshots in `backend/city_snapshots.sqlite3`.
 This local database is ignored by Git. Snapshot APIs:
 

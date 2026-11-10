@@ -168,18 +168,7 @@ def api_explore(req: ExploreRequest):
             detail=f"City '{req.city_name}' not found in Overture Maps divisions."
         )
 
-    bbox = boundary["bbox"]
-
-    # Step 2 — run all theme queries using the bbox
-    result = ExploreResult(
-        city=boundary,
-        buildings=count_buildings(bbox),
-        transportation=count_transportation(bbox),
-        water=count_water(bbox),
-        infrastructure=count_infrastructure(bbox),
-        land_use=count_land_use(bbox),
-        places=count_places(bbox),
-    )
+    result = explore_boundary(boundary)
     captured_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     release = get_overture_base().rsplit("/", 1)[-1]
     snapshot_id = save_snapshot(
@@ -192,6 +181,20 @@ def api_explore(req: ExploreRequest):
         captured_at=captured_at,
         overture_release=release,
         schema_version=SNAPSHOT_SCHEMA_VERSION,
+    )
+
+
+def explore_boundary(boundary: dict) -> ExploreResult:
+    """Run the same category queries for an already resolved division."""
+    bbox = boundary["bbox"]
+    return ExploreResult(
+        city=boundary,
+        buildings=count_buildings(bbox),
+        transportation=count_transportation(bbox),
+        water=count_water(bbox),
+        infrastructure=count_infrastructure(bbox),
+        land_use=count_land_use(bbox),
+        places=count_places(bbox),
     )
 
 
