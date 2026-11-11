@@ -60,8 +60,12 @@ def import_row(row: dict[str, str], countries: dict[str, set[str]]) -> str:
     if not candidates:
         raise ValueError(f"city not found: {city}, {location}")
     if len(candidates) != 1:
-        details = ", ".join(f"{c['division_id']} ({c['subtype']})" for c in candidates)
-        raise ValueError(f"ambiguous city: {city}, {location}; candidates: {details}")
+        localities = [candidate for candidate in candidates if candidate["subtype"] == "locality"]
+        if len(localities) == 1:
+            candidates = localities
+        else:
+            details = ", ".join(f"{c['division_id']} ({c['subtype']})" for c in candidates)
+            raise ValueError(f"ambiguous city: {city}, {location}; candidates: {details}")
 
     boundary = candidates[0]
     division_id = boundary["division_id"]

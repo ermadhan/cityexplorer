@@ -100,9 +100,10 @@ must match a region's Overture primary or common name, or its full region code,
 ignoring case, within the given country. The importer only considers city
 divisions whose Overture region code matches; a city with a missing region code
 will not match a state-filtered row. Leave `state` empty or omit the column to
-search the whole country as before. Multiple matching divisions, including
-different administrative levels within the same state, are logged as ambiguous
-rather than guessed. Unknown or ambiguous states, missing boundaries, and
+search the whole country as before. When multiple divisions match, the importer
+selects the locality if there is exactly one. Multiple localities, or multiple
+matches with no locality, are logged as ambiguous rather than guessed. A single
+non-locality match remains eligible. Unknown or ambiguous states, missing boundaries, and
 unknown countries are also logged. Names or aliases absent from Overture cannot
 be resolved.
 

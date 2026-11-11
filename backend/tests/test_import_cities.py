@@ -67,6 +67,49 @@ class ImportTests(unittest.TestCase):
                 import_cities.import_row({"city": "Example", "country": "IN"}, COUNTRIES)
         self.assertEqual(snapshot_store.get_city_snapshots("city-1"), [])
 
+    def test_prefers_locality_for_matching_different_subtypes(self):
+        county = {**BOUNDARY, "division_id": "county-1", "subtype": "county"}
+        with patch.object(import_cities, "find_city_boundaries", return_value=[county, BOUNDARY]), \
+             patch.object(import_cities, "load_region_names", return_value={"bihar": {"IN-BR"}}), \
+             patch.object(import_cities, "get_overture_base", return_value="s3://bucket/release/2026-10-21.0"), \
+             patch.object(import_cities, "explore_boundary", return_value=exploration()) as explore, \
+             patch.object(import_cities, "load_rating_inputs") as ratings:
+            row = {"city": "Example", "country": "India", "state": "Bihar"}
+            self.assertEqual(import_cities.import_row(row, COUNTRIES), "imported")
+            self.assertEqual(import_cities.import_row(row, COUNTRIES), "skipped")
+            explore.assert_called_once_with(BOUNDARY)
+            self.assertEqual(len(snapshot_store.get_city_snapshots("city-1")), 1)
+            self.assertEqual(snapshot_store.get_city_snapshots("county-1"), [])
+            ratings.assert_called_with("city-1", "2026-10-21.0")
+
+    def test_multiple_localities_remain_ambiguous(self):
+        county = {**BOUNDARY, "division_id": "county-1", "subtype": "county"}
+        other_locality = {**BOUNDARY, "division_id": "city-2"}
+        with patch.object(import_cities, "find_city_boundaries", return_value=[county, BOUNDARY, other_locality]), \
+             patch.object(import_cities, "explore_boundary") as explore:
+            with self.assertRaisesRegex(ValueError, "ambiguous city") as error:
+                import_cities.import_row({"city": "Example", "country": "India"}, COUNTRIES)
+            for candidate in ("county-1", "city-1", "city-2"):
+                self.assertIn(candidate, str(error.exception))
+            explore.assert_not_called()
+
+    def test_multiple_nonlocalities_remain_ambiguous(self):
+        candidates = [
+            {**BOUNDARY, "division_id": "county-1", "subtype": "county"},
+            {**BOUNDARY, "division_id": "region-1", "subtype": "region"},
+        ]
+        with patch.object(import_cities, "find_city_boundaries", return_value=candidates):
+            with self.assertRaisesRegex(ValueError, "ambiguous city"):
+                import_cities.import_row({"city": "Example", "country": "India"}, COUNTRIES)
+
+    def test_single_nonlocality_remains_eligible(self):
+        county = {**BOUNDARY, "division_id": "county-1", "subtype": "county"}
+        with patch.object(import_cities, "find_city_boundaries", return_value=[county]), \
+             patch.object(import_cities, "get_latest_snapshot", return_value={"overture_release": "2026-10-21.0"}), \
+             patch.object(import_cities, "load_rating_inputs") as ratings:
+            self.assertEqual(import_cities.import_row({"city": "Example", "country": "India"}, COUNTRIES), "skipped")
+            ratings.assert_called_once_with("county-1", "2026-10-21.0")
+
     def test_log_invalid_missing_ambiguous_and_processing_failures_and_continue(self):
         input_path = self.root / "cities.csv"
         input_path.write_text(
