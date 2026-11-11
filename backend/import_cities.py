@@ -9,7 +9,7 @@ from pathlib import Path
 
 from main import explore_boundary
 from queries import get_overture_base
-from queries.import_lookup import find_city_boundaries, load_country_names
+from queries.import_lookup import find_city_boundaries, load_country_names, load_region_names
 from ratings import load_rating_inputs
 from snapshot_store import get_latest_snapshot, initialize_snapshot_db, save_snapshot
 
@@ -26,6 +26,7 @@ def parse_reload(value: str) -> bool:
 def import_row(row: dict[str, str], countries: dict[str, set[str]]) -> str:
     city = (row.get("city") or "").strip()
     country = (row.get("country") or "").strip()
+    state = (row.get("state") or "").strip()
     if not city or not country:
         raise ValueError("city and country are required")
     reload = parse_reload(row.get("reload") or "")
@@ -38,12 +39,29 @@ def import_row(row: dict[str, str], countries: dict[str, set[str]]) -> str:
     if len(country_codes) != 1:
         raise ValueError(f"ambiguous country: {country}; use a two-letter code")
     country_code = next(iter(country_codes))
-    candidates = find_city_boundaries(city, country_code)
+    location = country_code
+    if state:
+        region_codes = load_region_names(country_code).get(state.casefold(), set())
+        if not region_codes:
+            raise ValueError(f"state not found: {state}, {country_code}")
+        code = state.upper()
+        if code in region_codes:
+            region_codes = {code}
+        if len(region_codes) != 1:
+            raise ValueError(
+                f"ambiguous state: {state}, {country_code}; use a region code: "
+                f"{', '.join(sorted(region_codes))}"
+            )
+        region_code = next(iter(region_codes))
+        location = f"{state}, {country_code}"
+        candidates = find_city_boundaries(city, country_code, region_code)
+    else:
+        candidates = find_city_boundaries(city, country_code)
     if not candidates:
-        raise ValueError(f"city not found: {city}, {country_code}")
+        raise ValueError(f"city not found: {city}, {location}")
     if len(candidates) != 1:
         details = ", ".join(f"{c['division_id']} ({c['subtype']})" for c in candidates)
-        raise ValueError(f"ambiguous city: {city}, {country_code}; candidates: {details}")
+        raise ValueError(f"ambiguous city: {city}, {location}; candidates: {details}")
 
     boundary = candidates[0]
     division_id = boundary["division_id"]
@@ -70,11 +88,11 @@ def run_import(csv_path: Path, log_dir: Path) -> int:
         reader = csv.DictReader(source, strict=True)
         required = {"city", "country"}
         if not reader.fieldnames or not required.issubset(reader.fieldnames):
-            raise ValueError("CSV must have city and country headers; reload is optional")
+            raise ValueError("CSV must have city and country headers; state and reload are optional")
         if len(reader.fieldnames) != len(set(reader.fieldnames)):
             raise ValueError("CSV column headers must be unique")
         writer = csv.DictWriter(failures, fieldnames=[
-            "run_timestamp_utc", "line", "city", "country", "reload", "reason",
+            "run_timestamp_utc", "line", "city", "country", "state", "reload", "reason",
         ])
         writer.writeheader()
         failures.flush()
@@ -117,6 +135,7 @@ def run_import(csv_path: Path, log_dir: Path) -> int:
                     "line": line,
                     "city": row.get("city", ""),
                     "country": row.get("country", ""),
+                    "state": row.get("state", ""),
                     "reload": row.get("reload", ""),
                     "reason": f"{type(exc).__name__}: {exc}",
                 })
@@ -127,7 +146,9 @@ def run_import(csv_path: Path, log_dir: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("csv_file", type=Path, help="CSV file with city,country and optional reload columns")
+    parser.add_argument(
+        "csv_file", type=Path, help="CSV file with city,country and optional state,reload columns",
+    )
     parser.add_argument(
         "--log-dir", type=Path, default=Path(__file__).resolve().parent / "import_logs",
         help="directory for timestamped failure CSV files",

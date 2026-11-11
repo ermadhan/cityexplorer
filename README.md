@@ -84,19 +84,27 @@ is reported as unavailable; it is not replaced with current data.
 ### Batch import cities
 
 The standalone importer populates the same SQLite database used by the app.
-Create a UTF-8 CSV with `city` and `country` headers and optional `reload`:
+Create a UTF-8 CSV with `city` and `country` headers and optional `state` and
+`reload` columns:
 
 ```csv
-city,country,reload
-Chennai,India,false
-Coimbatore,IN,true
+city,country,state,reload
+Chennai,India,Tamil Nadu,false
+Coimbatore,IN,IN-TN,true
 ```
 
 From `backend`, run `python import_cities.py path\to\cities.csv`. Country values
 may be two-letter codes or exact country names published by Overture. City names
-must exactly match an Overture primary name, ignoring case. Multiple matching
-divisions are logged as ambiguous rather than guessed. No boundary or unknown
-country is also logged. Names or aliases absent from Overture cannot be resolved.
+must exactly match an Overture primary name, ignoring case. If provided, `state`
+must match a region's Overture primary or common name, or its full region code,
+ignoring case, within the given country. The importer only considers city
+divisions whose Overture region code matches; a city with a missing region code
+will not match a state-filtered row. Leave `state` empty or omit the column to
+search the whole country as before. Multiple matching divisions, including
+different administrative levels within the same state, are logged as ambiguous
+rather than guessed. Unknown or ambiguous states, missing boundaries, and
+unknown countries are also logged. Names or aliases absent from Overture cannot
+be resolved.
 
 Each successful new import runs all six exploration queries, loads polygon-based
 POI rating inputs, and saves a timestamped snapshot. Existing cities are skipped
@@ -106,7 +114,7 @@ recorded release. Set `reload` to `true`, `yes`, or `1` for a new snapshot;
 remains unavailable.
 
 Each run creates a timestamped failure CSV under `backend/import_logs` (or
-`--log-dir`), including rows that cannot be found, are ambiguous, are invalid,
+`--log-dir`), including the requested state and rows that cannot be found, are ambiguous, are invalid,
 or fail processing. Processing continues after row failures. Exit status is
 `0` for success, `1` if any row failed, and `2` for invalid input or setup
 errors. An unrecoverable CSV syntax error is logged and ends the run because

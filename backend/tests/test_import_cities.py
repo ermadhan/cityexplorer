@@ -4,9 +4,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import duckdb
+
 import import_cities
 import main
 import snapshot_store
+from queries import import_lookup
 
 
 BOUNDARY = {
@@ -115,6 +118,61 @@ class ImportTests(unittest.TestCase):
                 import_cities.import_row({"city": "Example", "country": "in"}, {"in": {"IN", "XX"}})
         find_city.assert_called_once_with("Example", "IN")
 
+    def test_state_name_is_resolved_and_passed_to_city_lookup(self):
+        with patch.object(import_cities, "load_region_names", return_value={
+            "bihar": {"IN-BR"}, "in-br": {"IN-BR"},
+        }), patch.object(import_cities, "find_city_boundaries", return_value=[]) as find_city:
+            with self.assertRaisesRegex(ValueError, "city not found"):
+                import_cities.import_row(
+                    {"city": "Example", "country": "India", "state": " Bihar "},
+                    COUNTRIES,
+                )
+        find_city.assert_called_once_with("Example", "IN", "IN-BR")
+
+    def test_state_code_unknown_and_ambiguous_states(self):
+        regions = {
+            "in-br": {"IN-BR"},
+            "shared": {"IN-BR", "IN-KA"},
+        }
+        with patch.object(import_cities, "load_region_names", return_value=regions) as load_regions, \
+             patch.object(import_cities, "find_city_boundaries", return_value=[]) as find_city:
+            with self.assertRaisesRegex(ValueError, "city not found"):
+                import_cities.import_row(
+                    {"city": "Example", "country": "India", "state": "in-br"}, COUNTRIES,
+                )
+            find_city.assert_called_once_with("Example", "IN", "IN-BR")
+            with self.assertRaisesRegex(ValueError, "state not found: Unknown, IN"):
+                import_cities.import_row(
+                    {"city": "Example", "country": "India", "state": "Unknown"}, COUNTRIES,
+                )
+            with self.assertRaisesRegex(ValueError, "ambiguous state: shared, IN"):
+                import_cities.import_row(
+                    {"city": "Example", "country": "India", "state": "shared"}, COUNTRIES,
+                )
+            self.assertEqual(find_city.call_count, 1)
+            load_regions.assert_called_with("IN")
+
+    def test_state_failure_is_logged_and_processing_continues(self):
+        input_path = self.root / "cities.csv"
+        input_path.write_text(
+            "city,country,state,reload\nMissing,India,Bihar,\nExample,India,,\n",
+            encoding="utf-8",
+        )
+        with patch.object(import_cities, "load_country_names", return_value=COUNTRIES), \
+             patch.object(import_cities, "load_region_names", return_value={"bihar": {"IN-BR"}}), \
+             patch.object(import_cities, "find_city_boundaries", side_effect=[[], [BOUNDARY]]), \
+             patch.object(import_cities, "get_overture_base", return_value="s3://bucket/release/2026-10-21.0"), \
+             patch.object(import_cities, "explore_boundary", return_value=exploration()), \
+             patch.object(import_cities, "load_rating_inputs"):
+            self.assertEqual(import_cities.run_import(input_path, self.root / "logs"), 1)
+        log_path = next((self.root / "logs").glob("*.csv"))
+        with log_path.open(encoding="utf-8", newline="") as log:
+            rows = list(csv.DictReader(log))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["state"], "Bihar")
+        self.assertIn("Missing, Bihar, IN", rows[0]["reason"])
+        self.assertEqual(len(snapshot_store.get_city_snapshots("city-1")), 1)
+
     def test_country_lookup_failure_logged_for_each_row(self):
         input_path = self.root / "cities.csv"
         input_path.write_text("city,country\nA,India\nB,India\n", encoding="utf-8")
@@ -137,6 +195,66 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIn("CSV parsing error", rows[0]["reason"])
         self.assertEqual(rows[0]["line"], "2")
+
+
+class LookupQueryTests(unittest.TestCase):
+   def setUp(self):
+       self.temp = tempfile.TemporaryDirectory()
+       self.addCleanup(self.temp.cleanup)
+       root = Path(self.temp.name)
+       divisions = root / "theme=divisions" / "type=division"
+       areas = root / "theme=divisions" / "type=division_area"
+       divisions.mkdir(parents=True)
+       areas.mkdir(parents=True)
+       con = duckdb.connect()
+       try:
+           con.execute("""
+               CREATE TABLE divisions AS
+               SELECT * FROM (VALUES
+                   ('r1', 'Bihar', MAP {'en': 'Bihar State'}, 'IN', 'region', 'IN-BR'),
+                   ('r2', 'Karnataka', MAP {'en': 'Karnataka'}, 'IN', 'region', 'IN-KA'),
+                   ('r3', 'Bihar', MAP {'en': 'Bihar'}, 'XX', 'region', 'XX-BR'),
+                   ('c1', 'Example', MAP {'en': 'Example'}, 'IN', 'locality', 'IN-BR'),
+                   ('c2', 'Example', MAP {'en': 'Example'}, 'IN', 'locality', 'IN-KA'),
+                   ('c3', 'Example', MAP {'en': 'Example'}, 'IN', 'locality', NULL),
+                   ('c4', 'Example', MAP {'en': 'Example'}, 'IN', 'locality', 'IN-BR')
+               ) AS d(id, primary_name, common_names, country, subtype, region)
+           """)
+           con.execute("""
+               COPY (SELECT id, {'primary': primary_name, 'common': common_names} AS names,
+                            country, subtype, region FROM divisions)
+               TO ? (FORMAT PARQUET)
+           """, [str(divisions / "part.parquet")])
+           con.execute("""
+               COPY (SELECT id AS division_id,
+                            {'xmin': 1.0, 'ymin': 2.0, 'xmax': 3.0, 'ymax': 4.0} AS bbox
+                     FROM divisions WHERE id IN ('c1', 'c2', 'c3'))
+               TO ? (FORMAT PARQUET)
+           """, [str(areas / "part.parquet")])
+       finally:
+           con.close()
+       self.base = patch.object(import_lookup, "get_overture_base", return_value=str(root))
+       self.db = patch.object(import_lookup, "get_db", side_effect=duckdb.connect)
+       self.base.start()
+       self.db.start()
+       import_lookup.load_region_names.cache_clear()
+       self.addCleanup(import_lookup.load_region_names.cache_clear)
+       self.addCleanup(self.base.stop)
+       self.addCleanup(self.db.stop)
+
+   def test_region_names_are_country_scoped(self):
+       names = import_lookup.load_region_names("IN")
+       self.assertEqual(names["bihar"], {"IN-BR"})
+       self.assertEqual(names["bihar state"], {"IN-BR"})
+       self.assertEqual(names["in-ka"], {"IN-KA"})
+       self.assertNotIn("xx-br", names)
+
+   def test_city_lookup_filters_region_and_requires_area(self):
+       all_candidates = import_lookup.find_city_boundaries("example", "IN")
+       self.assertEqual({candidate["division_id"] for candidate in all_candidates}, {"c1", "c2", "c3"})
+       bihar = import_lookup.find_city_boundaries("Example", "IN", "IN-BR")
+       self.assertEqual([candidate["division_id"] for candidate in bihar], ["c1"])
+       self.assertEqual(import_lookup.find_city_boundaries("Example", "IN", "IN-XX"), [])
 
 
 if __name__ == "__main__":
